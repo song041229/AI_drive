@@ -40,6 +40,75 @@ def draw_points_and_lines(image, points, color):
     for i in range(len(points) - 1):
         cv2.line(image, points[i], points[i + 1], color, 3)
 
+def points_to_dict(points):
+    """중심점 리스트를 y좌표 기준 딕셔너리로 바꾼다."""
+    return {y: x for x, y in points}
+
+def make_target_points(left_points, right_points):
+    """두 차선 중심점 사이의 중간점을 주행 기준선으로 만든다."""
+    left_dict = points_to_dict(left_points)         # 왼쪽 차선 (y: x)
+    right_dict = points_to_dict(right_points)       # 오른쪽 차선 (y: x)
+
+    # (양쪽 차선이 모두 보이는) y좌표 골라내기
+    target_points = []
+    common_ys = sorted(set(left_dict.keys()) & set(right_dict.keys()), reverse=True)
+
+    # 아래 -> 위 y좌표 순으로 중간점 계산 => 리스트에 추가
+    for y in common_ys:
+        center_x = int((left_dict[y] + right_dict[y]) / 2)
+        target_points.append((center_x, y))
+
+    return target_points
+
+def shift_points(points, x_offset):
+    """한쪽 차선만 보일 때 차선 폭을 가정해서 주행 기준선을 만든다."""
+    target_points = []
+
+    for x, y in points:
+        target_points.append((int(x + x_offset), y))
+
+    return target_points
+
+def split_white_components_by_yellow(white_lane_mask, yellow_lane_mask, min_area=80):
+    """
+    흰색 차선을 먼저 연결된 덩어리로 나누고,
+    각 덩어리를 노란 차선 기준으로 왼쪽/오른쪽에 분류한다.
+    """
+    height, width = white_lane_mask.shape[:2]
+
+    num_labels, labels, stats, centroids = cv2.connectedComponentsWithStats(
+        white_lane_mask,
+        connectivity=8
+    )
+
+    # 전체 노란 차선의 기준 x를 구한다.
+    _, yellow_xs = np.where(yellow_lane_mask > 0)
+
+    if len(yellow_xs) > 10:
+        reference_x = int(np.mean(yellow_xs))
+    else:
+        reference_x = width // 2
+
+    left_white_mask = np.zeros((height, width), dtype=np.uint8)
+    right_white_mask = np.zeros((height, width), dtype=np.uint8)
+
+    for label in range(1, num_labels):
+        area = stats[label, cv2.CC_STAT_AREA]
+
+        if area < min_area:
+            continue
+
+        cx = centroids[label][0]
+
+        component_mask = np.zeros((height, width), dtype=np.uint8)
+        component_mask[labels == label] = 255
+
+        if cx < reference_x:
+            left_white_mask = cv2.bitwise_or(left_white_mask, component_mask)
+        else:
+            right_white_mask = cv2.bitwise_or(right_white_mask, component_mask)
+
+    return left_white_mask, right_white_mask
 
 def split_white_by_yellow(white_lane_mask, yellow_lane_mask, step=20):
     """
@@ -134,16 +203,48 @@ def show_front_camera(image):
 
 
     # 노란색 차선(중앙) 기준 1, 2차선 나누기
-    left_white_mask, right_white_mask = split_white_by_yellow(
+# 흰색 차선을 연결된 덩어리 기준으로 왼쪽/오른쪽 나누기
+    left_white_mask, right_white_mask = split_white_components_by_yellow(
         white_lane_mask,
         yellow_lane_mask,
-        step=20
+        min_area=80
     )
 
     # 각 차선별 중심점 구하기 (차선 몇 개 보이는 지 pixel 개수로 판단, 노란색은 점선 때문에 min_pixels 낮게 설정)
     yellow_points = get_center_points(yellow_lane_mask, min_pixels=5, step=20, max_x_jump=160)
     left_white_points = get_center_points(left_white_mask, min_pixels=20, step=20, max_x_jump=80)
     right_white_points = get_center_points(right_white_mask, min_pixels=20, step=20, max_x_jump=80)
+    
+    # 주행 기준선 생성
+    target_points = []
+
+    # 차선 하나만 보일 때 사용할 임시 차선 절반 폭
+    lane_half_width = int(width * 0.18)
+
+    if len(yellow_points) >= 3 and len(right_white_points) >= 3:
+        # 기본 주행: 노란 중앙선과 오른쪽 흰색 차선 사이
+        target_points = make_target_points(yellow_points, right_white_points)
+
+    elif len(left_white_points) >= 3 and len(yellow_points) >= 3:
+        # 오른쪽 흰색 차선이 안 보이면 왼쪽 흰색 차선과 노란선 사이
+        target_points = make_target_points(left_white_points, yellow_points)
+
+    elif len(left_white_points) >= 3 and len(right_white_points) >= 3:
+        # 노란선이 안 보이면 양쪽 흰색 차선 사이
+        target_points = make_target_points(left_white_points, right_white_points)
+
+    elif len(right_white_points) >= 3:
+        # 오른쪽 흰색 차선만 보이면 왼쪽으로 차선 절반만큼 이동
+        target_points = shift_points(right_white_points, -lane_half_width)
+
+    elif len(yellow_points) >= 3:
+        # 노란 중앙선만 보이면 오른쪽으로 차선 절반만큼 이동
+        target_points = shift_points(yellow_points, lane_half_width)
+
+    elif len(left_white_points) >= 3:
+        # 왼쪽 흰색 차선만 보이면 오른쪽으로 차선 절반만큼 이동
+        target_points = shift_points(left_white_points, lane_half_width)
+
 
     # cf. 차선 몇 개 보이는지 판단 (픽셀 개수 기준)
     yellow_visible = len(yellow_points) >= 3
@@ -166,6 +267,7 @@ def show_front_camera(image):
     draw_points_and_lines(masked_image, yellow_points, (0, 0, 255))          # 빨강: 노란 차선 중심선
     draw_points_and_lines(masked_image, left_white_points, (255, 0, 0))      # 파랑: 왼쪽 흰색 차선 중심선
     draw_points_and_lines(masked_image, right_white_points, (0, 255, 0))     # 초록: 오른쪽 흰색 차선 중심선
+    draw_points_and_lines(masked_image, target_points, (255, 0, 255))        # 보라: 주행 기준선
 
     # 보이는 차선 개수 표시
     cv2.putText(

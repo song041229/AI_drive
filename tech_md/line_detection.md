@@ -17,6 +17,32 @@ def draw_points_and_lines(image, points, color):
     - 중심점 찍기
     - 점과 점 사이 연결
 
+## points_to_dict()
+def points_to_dict(points):
+    - 중심점 list => y 좌표 dict로
+
+## make_target_points()
+def make_target_points(left_points, right_points):
+    - 왼쪽 차선 (y: x)
+    - 오른쪽 차선 (y: x)
+
+    - (양쪽 차선이 모두 보이는) y좌표 골라내기
+    
+    - 아래 -> 위 y좌표 순으로 중간점 계산 => 리스트에 추가
+
+## shift_points()
+def shift_points(points, x_offset):
+    - 한쪽 차선만 보임 => 차선 폭을 가정
+
+## split_white_components_by_yellow()
+def split_white_components_by_yellow(white_lane_mask, yellow_lane_mask, min_area=80):
+    """차선 하나만 보일때 / 2개 이상 보일 때 나누어 차선 나누기"""
+    - 흰색 차선을 먼저 연결된 덩어리로 나누고,
+    - 각 덩어리를 노란 차선 기준으로 왼쪽/오른쪽에 분류한다.
+
+    - 전체 노란 차선의 기준 x를 구한다.
+    - return left_white, right_white 
+
 ## split_white_by_yellow()
 def split_white_by_yellow(white_lane_mask, yellow_lane_mask, step=20):
     - 노란색 기준 흰색(왼쪽, 오른쪽) 나누기
@@ -93,15 +119,26 @@ def show_front_camera(image):
     - 오른쪽 흰색 = get_center_points(오른쪽 흰색 mask)
     - 왼쪽 흰색 = get_center_points(왼쪽 흰색 mask)
 
-    # cf. 차선 몇 개 보이는지 판단 (픽셀 개수 기준)
+    - 주행 기준선 생성
+        - 차선 하나만 보일 때 사용할 임시 차선 절반 폭
+        
+        - 기본 주행: 노란선 - 오른쪽 흰선 (2차선)
+        - \왼쪽 흰선 - 노란선 (1차선)
+        - 노란선 X => 양쪽 흰색 차선 사이 (1,2차선 걸쳐서)
+        - 오른쪽 흰선만 -> 왼쪽으로 이동 (2차선 이탈)
+        - 노란 중앙선만 -> 오른쪽으로 이동 (차선 유지)
+        - 왼쪽 흰색 차선만 -> 오른쪽으로 이동 (1차선 이탈)
+
+    ### cf. 차선 몇 개 보이는지 판단 (픽셀 개수 기준)
     - if (len() >= 3)로 각 차선 판별
     - visible_lane_count = sum([차선 인식 개수])
 
-    # 통합 이미지
-    # 차선 구분하기
-    (masked_image, 중앙)      # 빨강: 노란 차선 중심선
-    (masked_image, 왼쪽)      # 파랑: 왼쪽 흰색 차선 중심선
-    (masked_image, 오른쪽)     # 초록: 오른쪽 흰색 차선 중심선
+    - 통합 이미지
+    - 차선 구분하기
+    (masked_image, 중앙)            # 빨강: 노란 차선 중심선
+    (masked_image, 왼쪽)            # 파랑: 왼쪽 흰색 차선 중심선
+    (masked_image, 오른쪽)          # 초록: 오른쪽 흰색 차선 중심선
+    (masked_image, 주행 차선)       # 보라: 주행 기준선
 
     # 보이는 차선 개수 표시
     cv2.putText(
