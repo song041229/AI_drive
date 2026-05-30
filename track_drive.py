@@ -15,6 +15,9 @@ from rclpy.qos import qos_profile_sensor_data
 from rclpy.duration import Duration
 from cv_bridge import CvBridge
 
+# 새로운 모듈 추가
+from .line_detection import show_front_camera   # :line_dection.show_front_camera() 가져오기
+
 #=============================================
 # ROS2 Node 클래스 정의
 #=============================================
@@ -50,8 +53,10 @@ class TrackDriverNode(Node):
     #=============================================
     def cam_callback(self, data):
         # 수신한 메시지를 OpenCV 이미지로 변환하여 저장
+        # line_detection.py의 show_front_camera()에 image 전달
         self.image = self.bridge.imgmsg_to_cv2(data, "bgr8")
-    
+        show_front_camera(self.image)
+
     #=============================================
     # 라이다 토픽을 수신하는 콜백 함수
     #=============================================
@@ -76,14 +81,9 @@ class TrackDriverNode(Node):
         self.get_logger().info("======================================")
 
         while rclpy.ok():
-        
-            for _ in range(15):
-                self.drive(angle=0,speed=0)
-                time.sleep(0.1)
-
-            for _ in range(15):
-                self.drive(angle=0,speed=5)
-                time.sleep(0.1)
+            
+            rclpy.spin_once(self, timeout_sec=0.0005)
+            self.drive(angle=0, speed=0)
                 
 #=============================================
 # 메인 함수
