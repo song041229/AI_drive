@@ -33,6 +33,7 @@ def make_target_points(left_points, right_points):
 ## shift_points()
 def shift_points(points, x_offset):
     - 한쪽 차선만 보임 => 차선 폭을 가정
+    - 차선 이탈 방지를 목적으로 함 (주행 기준선을 차선 안쪽으로)
 
 ## split_white_components_by_yellow()
 def split_white_components_by_yellow(white_lane_mask, yellow_lane_mask, min_area=80):
@@ -123,7 +124,7 @@ def show_front_camera(image):
         - 차선 하나만 보일 때 사용할 임시 차선 절반 폭
         
         - 기본 주행: 노란선 - 오른쪽 흰선 (2차선)
-        - \왼쪽 흰선 - 노란선 (1차선)
+        - 왼쪽 흰선 - 노란선 (1차선)
         - 노란선 X => 양쪽 흰색 차선 사이 (1,2차선 걸쳐서)
         - 오른쪽 흰선만 -> 왼쪽으로 이동 (2차선 이탈)
         - 노란 중앙선만 -> 오른쪽으로 이동 (차선 유지)
