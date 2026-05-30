@@ -36,7 +36,8 @@ class TrackDriverNode(Node):
         self.motor_msg = XycarMotor()  # 모터토픽 메시지        
         self.lidar_ranges = None
         self.bridge = CvBridge()
-        
+        self.angle = 0.0
+
         # ROS2 Publisher & Subscriber 설정
         self.motor_pub = self.create_publisher(XycarMotor,'xycar_motor',10)
         
@@ -55,7 +56,16 @@ class TrackDriverNode(Node):
         # 수신한 메시지를 OpenCV 이미지로 변환하여 저장
         # line_detection.py의 show_front_camera()에 image 전달
         self.image = self.bridge.imgmsg_to_cv2(data, "bgr8")
-        show_front_camera(self.image)
+        
+        # line_detection.py의 show_front_camera() 함수를 호출하여 이미지 처리 및 조향각 계산
+        should_quit, angle = show_front_camera(self.image)
+        self.angle = angle
+
+        # 'q' 또는 ESC => 프로그램 종료
+        if should_quit:
+            rclpy.shutdown()
+
+
 
     #=============================================
     # 라이다 토픽을 수신하는 콜백 함수
@@ -83,7 +93,7 @@ class TrackDriverNode(Node):
         while rclpy.ok():
             
             rclpy.spin_once(self, timeout_sec=0.0005)
-            self.drive(angle=0, speed=0)
+            self.drive(angle=self.angle, speed=4)
                 
 #=============================================
 # 메인 함수

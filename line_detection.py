@@ -1,7 +1,12 @@
 import cv2
 import numpy as np
+import math
 
+prev_target_points = []
 
+# =======================================
+# 3. 주행 차선 및 주행할 중앙라인 도출
+# ========================================
 def get_center_points(mask, min_pixels=20, step=20, max_x_jump=80):
     """
     - 마스크 이미지를 y축으로 나눔
@@ -49,25 +54,36 @@ def draw_points_and_lines(image, points, color):
     for i in range(len(points) - 1):
         cv2.line(image, points[i], points[i + 1], color, 3)
 
+
 def points_to_dict(points):
     """ 중심점 리스트 -> y좌표 기준의 dict 변환 """
     return {y: x for x, y in points}
 
-def make_target_points(left_points, right_points):
-    """ 중간점 = 주행 기준선 (양쪽 차선이 모두 보이는 구간) """
-    left_dict = points_to_dict(left_points)         # 왼쪽 차선 (y: x)
-    right_dict = points_to_dict(right_points)       # 오른쪽 차선 (y: x)
 
-    # (양쪽 차선이 모두 보이는) y좌표 골라내기
+def make_target_points(left_points, right_points, y_tol=20):
     target_points = []
-    common_ys = sorted(set(left_dict.keys()) & set(right_dict.keys()), reverse=True)
 
-    # 아래 -> 위 y좌표 순으로 중간점 계산 => 리스트에 추가
-    for y in common_ys:
-        center_x = int((left_dict[y] + right_dict[y]) / 2)
-        target_points.append((center_x, y))
+    left = sorted(left_points, key=lambda p: p[1])
+    right = sorted(right_points, key=lambda p: p[1])
+
+    for lx, ly in left:
+        # 오른쪽에서 가까운 y 찾기
+        candidates = [(rx, ry) for rx, ry in right if abs(ry - ly) < y_tol]
+
+        if len(candidates) == 0:
+            continue
+
+        # 가장 가까운 y 선택
+        rx, ry = min(candidates, key=lambda p: abs(p[1] - ly))
+
+        mx = int((lx + rx) / 2)
+        my = int((ly + ry) / 2)
+
+        target_points.append((mx, my))
 
     return target_points
+
+
 
 def shift_points(points, x_offset):
     """중간점 = 주행 기준선 (하나의 차선만 보이는 구간)"""
@@ -77,6 +93,7 @@ def shift_points(points, x_offset):
         target_points.append((int(x + x_offset), y))
 
     return target_points
+
 
 def split_white_components_by_yellow(white_lane_mask, yellow_lane_mask, min_area=80):
     """
@@ -118,6 +135,7 @@ def split_white_components_by_yellow(white_lane_mask, yellow_lane_mask, min_area
             right_white_mask = cv2.bitwise_or(right_white_mask, component_mask)
 
     return left_white_mask, right_white_mask
+
 
 def split_white_by_yellow(white_lane_mask, yellow_lane_mask, step=20):
     """
@@ -169,7 +187,107 @@ def split_white_by_yellow(white_lane_mask, yellow_lane_mask, step=20):
 
     return left_white_mask, right_white_mask
 
+# ========================================
+# 4. 차선 검출 및 주행 기준선 도출 알고리즘
+# ========================================
+# -----------------------------
+# 직선 / 코너 판단 (단순)
+# -----------------------------
+def is_curve(yellow_points, width):
+    if len(yellow_points) < 5:
+        return False
 
+    pts = sorted(yellow_points, key=lambda p: p[1])
+
+    top = pts[int(len(pts)*0.2)][0]
+    bottom = pts[-1][0]
+
+    return abs(top - bottom) > width * 0.05
+
+
+# -----------------------------
+# 직선
+# -----------------------------
+def steering_straight(points, width, height):
+    if len(points) < 3:   # ✅ 추가
+        return 0
+
+    pts = sorted(points, key=lambda p: p[1])
+
+    idx = int(len(pts)*0.6)
+    idx = min(idx, len(pts)-1)   # ✅ 안전 처리
+
+    x, _ = pts[idx]
+
+    cx = width // 2
+    error = x - cx
+
+    angle = error * 0.5
+
+    return int(max(min(angle, 80), -80))
+
+
+
+# -----------------------------
+# 코너 (노란선만 사용)
+# -----------------------------
+def steering_yellow_line(points, width, height):
+    if len(points) < 3:
+        return 0
+
+    pts = sorted(points, key=lambda p: p[1])
+
+    idx = max(2, int(len(pts)*0.1))
+    idx = min(idx, len(pts)-1)   # ✅ 안전
+
+    lx, ly = pts[idx]
+
+    cx = width // 2
+    cy = height
+
+    dx = lx - cx
+    dy = cy - ly
+
+    if dy == 0:
+        return 0
+
+    Ld = math.sqrt(dx**2 + dy**2)
+
+    kappa = 2 * dx / (Ld**2)
+    angle = math.degrees(math.atan(kappa * Ld))
+
+    return int(max(min(angle * 3.0, 80), -80))
+
+
+
+# -----------------------------
+# 최종 조향 (핵심 구조)
+# -----------------------------
+def calculate_steering(target_points, yellow_points, width, height):
+
+    if len(target_points) < 3 and len(yellow_points) < 3:
+        return 0   # ✅ 둘 다 없으면 정지
+
+    if is_curve(yellow_points, width):
+        if len(yellow_points) >= 3:
+            return steering_yellow_line(yellow_points, width, height)
+        else:
+            return 0
+    else:
+        if len(target_points) >= 3:
+            return steering_straight(target_points, width, height)
+        else:
+            return 0
+
+
+
+
+
+
+
+# ========================================
+# 메인 함수: 이미지 입력 -> 차선 검출 -> 주행 기준선 도출 -> 시각화
+# ========================================
 def show_front_camera(image):
     
 # 받은 이미지 X
@@ -213,8 +331,14 @@ def show_front_camera(image):
     white_lane_mask = cv2.bitwise_and(white_mask, roi_mask)
     
     # 노란색 : 점선으로 구성 => morphologyEx로 구멍 메꾸기
-    yellow_kernel = np.ones((5, 15), np.uint8)
-    yellow_lane_mask = cv2.morphologyEx(yellow_lane_mask, cv2.MORPH_CLOSE, yellow_kernel)
+    yellow_kernel = np.ones((5,5), np.uint8)
+
+    yellow_lane_mask = cv2.morphologyEx(
+        yellow_lane_mask,
+        cv2.MORPH_CLOSE,
+        yellow_kernel
+    )
+
 
 
     # 노란색 차선(중앙) 기준 1, 2차선 나누기
@@ -226,7 +350,7 @@ def show_front_camera(image):
     )
 
     # 각 차선별 중심점 구하기 (차선 몇 개 보이는 지 pixel 개수로 판단, 노란색은 점선 때문에 min_pixels 낮게 설정)
-    yellow_points = get_center_points(yellow_lane_mask, min_pixels=5, step=20, max_x_jump=160)
+    yellow_points = get_center_points(yellow_lane_mask, min_pixels=3, step=15, max_x_jump=180)
     left_white_points = get_center_points(left_white_mask, min_pixels=20, step=20, max_x_jump=80)
     right_white_points = get_center_points(right_white_mask, min_pixels=20, step=20, max_x_jump=80)
     
@@ -261,6 +385,17 @@ def show_front_camera(image):
         target_points = shift_points(yellow_points, lane_half_width)
     elif len(left_white_points) >= 3:
         target_points = shift_points(left_white_points, lane_half_width)
+
+    global prev_target_points
+
+
+    # 주행 기준선에서 조향각 계산 (drive() 함수에 return 값으로 전달)
+    angle = calculate_steering(
+        target_points,      # mid_points
+        yellow_points,
+        width,
+        height
+    )
 
 
     # cf. 차선 몇 개 보이는지 판단 (픽셀 개수 기준)
@@ -300,11 +435,9 @@ def show_front_camera(image):
     cv2.imshow("Masked Lane Image", masked_image)
 
 
-
-
 # 'q' 또는 ESC 키를 누르면 종료
     key = cv2.waitKey(1) & 0xFF
     if key == ord('q') or key == 27:
-        return True
+        return True, angle
 
-    return False
+    return False, angle

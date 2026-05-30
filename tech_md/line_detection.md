@@ -1,5 +1,21 @@
-import cv2
-import numpy as np
+# 목차 
+1. 카메라 콜백 -> openCV를 이용하여 image 띄우기
+    - cam_callback()에서 show_front_camera() 호출
+    - 가져온 image를 openCV를 통해 GUI로 띄우기
+
+2. image 흰선, 노란선 mask 처리 + ROI 영역 설정 (왼쪽:파랑, 중앙:빨강, 오른쪽:초록)
+    - ROI 설정 : 사다리꼴 모양 (원근법 적용)
+    - 흰색 mask 및 노란색 mask 각각 추출
+    - 흰색 mask + ROI, 노란색 mask + ROI 생성
+    - (노란색 mask + ROI)를 기준으로 1, 2차선 구분
+
+3. 주행 차선 및 주행할 중앙라인 도출 (주행:보라)
+    - 각 차선별 중심점 구하기 (y[세로]축 기준)
+    - 중심점 이용 => 주행 기준선 생성
+    - 차선 구분하기(왼쪽 흰색선, 중앙 노란선, 오른쪽 흰색선, 주행선)
+
+4. 조향각 계산
+
 
 ## get_center_points()
 def get_center_points(mask, min_pixels=20, step=20):

@@ -7,6 +7,7 @@ class TrackDriverNode(Node):
         motor_msg       # 모터토픽 메시지        
         lidar_ranges        
         bridge
+        angle
 
         motor_pub       # 모터
         sub_front       # front 카메라
@@ -25,6 +26,9 @@ class TrackDriverNode(Node):
     ### 모터제어 토픽을 발행하는 Publisher 함수  
     def drive(self, angle, speed):
         - angle, speed만큼 모터제어 (차량 이동 함수)
+        - line_detection에서 (키보드 입력, angle) 수신
+            - angle로 drive() 조정
+            - 'q' or ESC로 프로그램 종료
 
 ## main루프 정의
     ### 메인 루프
