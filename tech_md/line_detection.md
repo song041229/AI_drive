@@ -89,7 +89,7 @@ def show_front_camera(image):
     - 오른쪽, 왼쪽 = split_white_by_yellow()
 
     ### 각 차선별 중심점 구하기 (차선 몇 개 보이는 지 pixel 개수로 판단)
-    - 노란색 = get_center_points(노란색 mask)
+    - 노란색 = get_center_points(노란색 mask, 기준 완화[점선])
     - 오른쪽 흰색 = get_center_points(오른쪽 흰색 mask)
     - 왼쪽 흰색 = get_center_points(왼쪽 흰색 mask)
 

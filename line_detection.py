@@ -2,10 +2,12 @@ import cv2
 import numpy as np
 
 
-def get_center_points(mask, min_pixels=20, step=20):
+def get_center_points(mask, min_pixels=20, step=20, max_x_jump=80):
     """마스크 이미지를 y축 방향으로 나누고, 각 구간의 픽셀 중심점을 구한다."""
     height, width = mask.shape[:2]
     center_points = []
+
+    last_x = None
 
     for y in range(height - 1, 0, -step):
         y_start = max(y - step, 0)
@@ -19,7 +21,13 @@ def get_center_points(mask, min_pixels=20, step=20):
         if len(xs) > min_pixels:
             center_x = int(np.mean(xs))
             center_y = int((y_start + y_end) / 2)
+
+            # 이전 중심점과 너무 멀리 떨어진 점은 잘못 잡힌 점으로 보고 무시한다.
+            if last_x is not None and abs(center_x - last_x) > max_x_jump:
+                continue
+
             center_points.append((center_x, center_y))
+            last_x = center_x
 
     return center_points
 
@@ -119,6 +127,11 @@ def show_front_camera(image):
     # 1, 2차선 영역만 보기 (노란색 + 사다리꼴 ROI), (흰색 + 사다리꼴 ROI)
     yellow_lane_mask = cv2.bitwise_and(yellow_mask, roi_mask)
     white_lane_mask = cv2.bitwise_and(white_mask, roi_mask)
+    
+    # 노란색 : 점선으로 구성 => morphologyEx로 구멍 메꾸기
+    yellow_kernel = np.ones((5, 15), np.uint8)
+    yellow_lane_mask = cv2.morphologyEx(yellow_lane_mask, cv2.MORPH_CLOSE, yellow_kernel)
+
 
     # 노란색 차선(중앙) 기준 1, 2차선 나누기
     left_white_mask, right_white_mask = split_white_by_yellow(
@@ -127,10 +140,10 @@ def show_front_camera(image):
         step=20
     )
 
-    # 각 차선별 중심점 구하기 (차선 몇 개 보이는 지 pixel 개수로 판단)
-    yellow_points = get_center_points(yellow_lane_mask, min_pixels=10, step=20)
-    left_white_points = get_center_points(left_white_mask, min_pixels=20, step=20)
-    right_white_points = get_center_points(right_white_mask, min_pixels=20, step=20)
+    # 각 차선별 중심점 구하기 (차선 몇 개 보이는 지 pixel 개수로 판단, 노란색은 점선 때문에 min_pixels 낮게 설정)
+    yellow_points = get_center_points(yellow_lane_mask, min_pixels=5, step=20, max_x_jump=160)
+    left_white_points = get_center_points(left_white_mask, min_pixels=20, step=20, max_x_jump=80)
+    right_white_points = get_center_points(right_white_mask, min_pixels=20, step=20, max_x_jump=80)
 
     # cf. 차선 몇 개 보이는지 판단 (픽셀 개수 기준)
     yellow_visible = len(yellow_points) >= 3
