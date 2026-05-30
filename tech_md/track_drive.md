@@ -1,8 +1,8 @@
-# AI_drive
-```
+# TrackDriverNode 정의
 class TrackDriverNode(Node):
-    # 클래스 생성 초기화 함수
-    1. __init__(self)
+
+    ### 클래스 생성 초기화 함수
+    __init__(self)
         image           # 카메라 토픽 데이터를 저장할 변수
         motor_msg       # 모터토픽 메시지        
         lidar_ranges        
@@ -12,20 +12,22 @@ class TrackDriverNode(Node):
         sub_front       # front 카메라
         subscription    # lider
     
-    2. def cam_callback(self, data)
-        # 카메라 토픽을 수신하는 콜백 함수 
+## callback 함수
+    ### 카메라 토픽을 수신하는 콜백 함수 
+    def cam_callback(self, data)
         - 수신한 메시지(data)를 OpenCV 이미지로 변환하여 저장(image)
         - 저장한 이미지(image)를 line_detection.py에 넘겨주기(show_front_camera(image))
     
-    3. def lidar_callback(self, msg):
-        # 라이다 토픽을 수신하는 콜백 함수
+    ### 라이다 토픽을 수신하는 콜백 함수
+    def lidar_callback(self, msg):
         
 
-    4. def drive(self, angle, speed):
-        # 모터제어 토픽을 발행하는 Publisher 함수  
+    ### 모터제어 토픽을 발행하는 Publisher 함수  
+    def drive(self, angle, speed):
         - angle, speed만큼 모터제어 (차량 이동 함수)
 
-    # 메인 루프
+## main루프 정의
+    ### 메인 루프
     def main_loop(self):
         angle
             - : 자회전
@@ -44,7 +46,7 @@ class TrackDriverNode(Node):
                 
                 
 
-# 메인 함수
+# main 함수
 def main(args=None):
       
     rclpy.init(args=args)
@@ -53,6 +55,3 @@ def main(args=None):
     try:                        # main_loop() 함수를 호출
     except KeyboardInterrupt:   # (Ctrl+C) -> 그만
     finally:                    # 프로그램 종료
-
-
-```
